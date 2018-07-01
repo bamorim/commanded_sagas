@@ -252,14 +252,40 @@ And then I'd build a View Model for the order with the corresponding state of th
 
 To avoid all the boilerplate when using process managers, I was thinking about the following macro:
 
+The idea is a behaviour like
+
+```elixir
+defmodule CommandedSagas.Step do
+  # In case the execute_result is a struct, we'll assume it is a command and we'll dispatch it
+  @type saga_id :: String.t
+  @type data :: any
+  @type execute_result ::
+          :ok
+          | :fail
+          | :finish
+          | {:fail, data}
+          | {:finish, data}
+          | struct()
+          | {:dispatch, struct()}
+
+  @callback execute(saga_id, data) :: execute_result
+  @callback finish_on(event :: any()) :: saga_id | {saga_id, data}
+  @callback fail_on(event :: any()) :: saga_id | {saga_id, data}
+  @callback retry_strategy() :: :always | :never | {:max, integer()}
+end
+```
+
 ```elixir
 defmodule CheckoutSaga.CreateOrder do
-  use CheckoutSaga.Step.CreateOrder.EventDriven, router: Router
+  use CommandedSagas.Step,
+    router: Router,
+    saga: CheckoutSaga,
+    step: :CreateOrder
 
   alias Orders.Events.OrderCreated
   alias Orders.Commands.CreateOrder
 
-  def on_started(saga_id, data) do
+  def execute(saga_id, data) do
     %CreateOrder{
       id: saga_id,
       items: data.items
@@ -267,8 +293,6 @@ defmodule CheckoutSaga.CreateOrder do
   end
 
   def finish_on(%OrderCreated{id: id}), do: id
-  # And in case it is a event-driven failure
-  def fail_on(%OrderFailed{id: id}), do: id
 end
 ```
 
@@ -276,7 +300,10 @@ end
 
 ```elixir
 defmodule CheckoutSaga.CalculateShipping do
-  use CheckoutSaga.Step.CreateOrder.Synchronous, router: Router
+  use CommandedSagas.Step,
+    router: Router,
+    saga: CheckoutSaga,
+    step: :CalculateShipping
 
   # This should return either `:finish`, `:fail`, `{:finish, data}`, `{:fail, data}`
   def execute(saga_id, data) do
