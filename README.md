@@ -246,6 +246,50 @@ The domain probably would look like
 
 And then I'd build a View Model for the order with the corresponding state of the order.
 
+## Extra Macro Ideas
+
+### ProcessManager macro for Internal EventDriven
+
+To avoid all the boilerplate when using process managers, I was thinking about the following macro:
+
+```elixir
+defmodule CheckoutSaga.CreateOrder do
+  use CheckoutSaga.Step.CreateOrder.EventDriven, router: Router
+
+  alias Orders.Events.OrderCreated
+  alias Orders.Commands.CreateOrder
+
+  def on_started(saga_id, data) do
+    %CreateOrder{
+      id: saga_id,
+      items: data.items
+    }
+  end
+
+  def finish_on(%OrderCreated{id: id}), do: id
+  # And in case it is a event-driven failure
+  def fail_on(%OrderFailed{id: id}), do: id
+end
+```
+
+### ProcessManager macro for external synchronous
+
+```elixir
+defmodule CheckoutSaga.CalculateShipping do
+  use CheckoutSaga.Step.CreateOrder.Synchronous, router: Router
+
+  # This should return either `:finish`, `:fail`, `{:finish, data}`, `{:fail, data}`
+  def execute(saga_id, data) do
+    case ShippingService.calculate_shipping(data.items) do
+      {:ok, shipping_price} ->
+        {:finish, %{shipping_price: shipping_price}}
+      _ ->
+        :fail
+    end
+  end
+end
+```
+
 ## Installation
 
 ```elixir
